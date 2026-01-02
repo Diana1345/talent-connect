@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +22,13 @@ import {
   Loader2,
   Play,
   Download,
-  QrCode as QrCodeIcon
+  QrCode as QrCodeIcon,
+  RefreshCw
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { useVideoGeneration } from "@/hooks/useVideoGeneration";
+import { extractTextFromFile, extractLinkedInProfile } from "@/lib/extractCvText";
 
 const countries = [
   "Afghanistan", "Albania", "Algeria", "Argentina", "Australia", "Austria", "Bangladesh",
@@ -61,20 +64,39 @@ const ImmigrantFlow = () => {
     yearsExperience: "",
     keyStrengths: "",
     whyMove: "",
+    extractedCvText: "",
   });
   const [isRecording, setIsRecording] = useState(false);
   const [recordingComplete, setRecordingComplete] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [videoReady, setVideoReady] = useState(false);
-  const [generatedVideoUrl] = useState("https://aividcv.com/video/12345");
+  
+  const { 
+    generateVideo, 
+    pollStatus, 
+    isGenerating, 
+    videoStatus 
+  } = useVideoGeneration();
+  
+  const generatedVideoUrl = videoStatus?.videoUrl || "";
+  const videoReady = videoStatus?.status === "completed";
 
   const progress = (currentStep / steps.length) * 100;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setFormData({ ...formData, cvFile: file });
       toast.success("CV uploaded successfully!");
+      
+      // Extract text from the CV
+      try {
+        const extractedText = await extractTextFromFile(file);
+        setFormData(prev => ({ ...prev, extractedCvText: extractedText }));
+        console.log("Extracted CV text:", extractedText.substring(0, 200) + "...");
+      } catch (error) {
+        console.error("Error extracting CV text:", error);
+        toast.error("Could not extract text from CV, but file was uploaded.");
+      }
     }
   };
 
@@ -95,15 +117,44 @@ const ImmigrantFlow = () => {
     }
   };
 
-  const handlePayment = () => {
+  const handlePayment = async () => {
     setIsProcessing(true);
-    // Simulate payment and video generation
-    setTimeout(() => {
-      setIsProcessing(false);
-      setVideoReady(true);
+    
+    try {
+      // Extract LinkedIn profile if that's the upload method
+      let cvText = formData.extractedCvText;
+      let linkedinText = "";
+      
+      if (formData.uploadMethod === "linkedin" && formData.linkedinUrl) {
+        linkedinText = await extractLinkedInProfile(formData.linkedinUrl);
+      }
+
+      // Generate the video with HeyGen
+      const videoId = await generateVideo({
+        cvText,
+        linkedinText,
+        targetRole: formData.targetRole,
+        yearsExperience: formData.yearsExperience,
+        keyStrengths: formData.keyStrengths,
+        whyMove: formData.whyMove,
+        originCountry: formData.originCountry,
+        currentCountry: formData.currentCountry,
+      });
+
+      toast.info("Video is being generated. This may take 2-5 minutes...");
+      
+      // Move to result page and start polling
       setCurrentStep(6);
-      toast.success("Payment successful! Video is ready.");
-    }, 3000);
+      
+      // Poll for video completion
+      await pollStatus(videoId);
+      
+    } catch (error) {
+      console.error("Payment/generation error:", error);
+      toast.error("Failed to generate video. Please try again.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const canProceed = () => {
@@ -471,47 +522,128 @@ const ImmigrantFlow = () => {
             animate={{ opacity: 1, scale: 1 }}
             className="space-y-6"
           >
-            <div className="text-center mb-8">
-              <CheckCircle2 className="w-16 h-16 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold mb-2">Your Video is Ready!</h2>
-              <p className="text-muted-foreground">
-                Congratulations! Your AI-generated video CV is complete.
-              </p>
-            </div>
-
-            {/* Video Preview */}
-            <div className="bg-gradient-card rounded-xl border border-border overflow-hidden">
-              <div className="aspect-video bg-secondary/50 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
-                    <Play className="w-10 h-10 text-primary" />
-                  </div>
-                  <p className="text-muted-foreground">Click to play your video</p>
+            {/* Processing State */}
+            {!videoReady && videoStatus?.status !== "failed" && (
+              <>
+                <div className="text-center mb-8">
+                  <Loader2 className="w-16 h-16 text-primary mx-auto mb-4 animate-spin" />
+                  <h2 className="text-2xl font-bold mb-2">Generating Your Video...</h2>
+                  <p className="text-muted-foreground">
+                    Our AI is creating your personalized video CV. This usually takes 2-5 minutes.
+                  </p>
                 </div>
-              </div>
-            </div>
+                
+                <div className="bg-gradient-card rounded-xl border border-border p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <RefreshCw className="w-5 h-5 text-primary animate-spin" />
+                    <span className="text-foreground font-medium">Processing your information...</span>
+                  </div>
+                  <Progress value={videoStatus?.status === "processing" ? 60 : 30} className="h-2" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Status: {videoStatus?.status || "Starting..."}
+                  </p>
+                </div>
+              </>
+            )}
 
-            {/* QR Code */}
-            <div className="flex flex-col items-center py-6">
-              <div className="bg-white p-4 rounded-xl mb-4">
-                <QRCodeSVG value={generatedVideoUrl} size={150} />
-              </div>
-              <p className="text-sm text-muted-foreground text-center">
-                Scan to share your video CV
-              </p>
-            </div>
+            {/* Error State */}
+            {videoStatus?.status === "failed" && (
+              <>
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 rounded-full bg-destructive/20 flex items-center justify-center mx-auto mb-4">
+                    <span className="text-destructive text-2xl">!</span>
+                  </div>
+                  <h2 className="text-2xl font-bold mb-2">Video Generation Failed</h2>
+                  <p className="text-muted-foreground">
+                    {videoStatus.error || "Something went wrong. Please try again."}
+                  </p>
+                </div>
+                
+                <Button 
+                  variant="hero" 
+                  size="lg" 
+                  className="w-full"
+                  onClick={() => setCurrentStep(5)}
+                >
+                  Try Again
+                </Button>
+              </>
+            )}
 
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" size="lg">
-                <Download className="w-4 h-4 mr-2" />
-                Download Video
-              </Button>
-              <Button variant="hero" size="lg">
-                <QrCodeIcon className="w-4 h-4 mr-2" />
-                Share QR Code
-              </Button>
-            </div>
+            {/* Success State */}
+            {videoReady && (
+              <>
+                <div className="text-center mb-8">
+                  <CheckCircle2 className="w-16 h-16 text-primary mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold mb-2">Your Video is Ready!</h2>
+                  <p className="text-muted-foreground">
+                    Congratulations! Your AI-generated video CV is complete.
+                  </p>
+                </div>
+
+                {/* Video Preview */}
+                <div className="bg-gradient-card rounded-xl border border-border overflow-hidden">
+                  {generatedVideoUrl ? (
+                    <video 
+                      src={generatedVideoUrl} 
+                      controls 
+                      className="w-full aspect-video"
+                      poster={videoStatus?.thumbnailUrl}
+                    />
+                  ) : (
+                    <div className="aspect-video bg-secondary/50 flex items-center justify-center">
+                      <div className="text-center">
+                        <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-4">
+                          <Play className="w-10 h-10 text-primary" />
+                        </div>
+                        <p className="text-muted-foreground">Video preview</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* QR Code */}
+                {generatedVideoUrl && (
+                  <div className="flex flex-col items-center py-6">
+                    <div className="bg-white p-4 rounded-xl mb-4">
+                      <QRCodeSVG value={generatedVideoUrl} size={150} />
+                    </div>
+                    <p className="text-sm text-muted-foreground text-center">
+                      Scan to share your video CV
+                    </p>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="grid grid-cols-2 gap-4">
+                  <Button 
+                    variant="outline" 
+                    size="lg"
+                    onClick={() => {
+                      if (generatedVideoUrl) {
+                        window.open(generatedVideoUrl, '_blank');
+                      }
+                    }}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Video
+                  </Button>
+                  <Button 
+                    variant="hero" 
+                    size="lg"
+                    onClick={() => {
+                      if (generatedVideoUrl) {
+                        navigator.clipboard.writeText(generatedVideoUrl);
+                        toast.success("Video URL copied to clipboard!");
+                      }
+                    }}
+                  >
+                    <QrCodeIcon className="w-4 h-4 mr-2" />
+                    Share QR Code
+                  </Button>
+                </div>
+              </>
+            )}
           </motion.div>
         );
 
