@@ -1,117 +1,92 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Filter, Play, Download, QrCode, Briefcase, Clock, MapPin, CreditCard, Lock } from "lucide-react";
+import { Search, Play, Download, QrCode, Briefcase, Clock, MapPin, CreditCard, Lock, Loader2, LogIn } from "lucide-react";
 import { motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-
-// Mock data for videos
-const mockVideos = [
-  {
-    id: 1,
-    name: "Maria Garcia",
-    role: "Software Engineer",
-    experience: "5 years",
-    location: "Spain → Germany",
-    status: "completed",
-    videoUrl: "https://example.com/video1",
-    thumbnail: null,
-    skills: ["React", "Node.js", "Python"],
-    createdAt: "2024-01-15",
-  },
-  {
-    id: 2,
-    name: "Ahmed Hassan",
-    role: "Data Analyst",
-    experience: "3 years",
-    location: "Egypt → UK",
-    status: "completed",
-    videoUrl: "https://example.com/video2",
-    thumbnail: null,
-    skills: ["SQL", "Tableau", "Python"],
-    createdAt: "2024-01-14",
-  },
-  {
-    id: 3,
-    name: "Yuki Tanaka",
-    role: "UX Designer",
-    experience: "7 years",
-    location: "Japan → USA",
-    status: "completed",
-    videoUrl: "https://example.com/video3",
-    thumbnail: null,
-    skills: ["Figma", "Adobe XD", "Prototyping"],
-    createdAt: "2024-01-13",
-  },
-  {
-    id: 4,
-    name: "Olga Petrov",
-    role: "Product Manager",
-    experience: "10 years",
-    location: "Ukraine → Canada",
-    status: "completed",
-    videoUrl: "https://example.com/video4",
-    thumbnail: null,
-    skills: ["Agile", "Scrum", "Jira"],
-    createdAt: "2024-01-12",
-  },
-  {
-    id: 5,
-    name: "Carlos Silva",
-    role: "DevOps Engineer",
-    experience: "4 years",
-    location: "Brazil → Portugal",
-    status: "processing",
-    videoUrl: null,
-    thumbnail: null,
-    skills: ["AWS", "Docker", "Kubernetes"],
-    createdAt: "2024-01-11",
-  },
-  {
-    id: 6,
-    name: "Fatima Al-Rashid",
-    role: "Marketing Manager",
-    experience: "6 years",
-    location: "UAE → Netherlands",
-    status: "completed",
-    videoUrl: "https://example.com/video6",
-    thumbnail: null,
-    skills: ["SEO", "Content Strategy", "Analytics"],
-    createdAt: "2024-01-10",
-  },
-];
+import { useAuth } from "@/hooks/useAuth";
+import { useVideos, usePayments, Video } from "@/hooks/useVideos";
 
 const experienceOptions = ["All Experience", "0-2 years", "3-5 years", "6-10 years", "10+ years"];
 const jobOptions = ["All Jobs", "Software Engineer", "Data Analyst", "UX Designer", "Product Manager", "DevOps Engineer", "Marketing Manager"];
 
 const CompanyPortal = () => {
+  const navigate = useNavigate();
+  const { user, isAdmin, isLoading: authLoading } = useAuth();
+  const { videos, isLoading: videosLoading, fetchAllVideos } = useVideos();
+  const { hasActiveSubscription } = usePayments();
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [experienceFilter, setExperienceFilter] = useState("All Experience");
   const [jobFilter, setJobFilter] = useState("All Jobs");
-  const [selectedVideo, setSelectedVideo] = useState<typeof mockVideos[0] | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [showQR, setShowQR] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [checkingSubscription, setCheckingSubscription] = useState(true);
 
-  const filteredVideos = mockVideos.filter((video) => {
-    const matchesSearch = video.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      video.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      video.skills.some(skill => skill.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Check subscription status
+  useEffect(() => {
+    const checkSubscription = async () => {
+      if (user) {
+        const hasSubscription = await hasActiveSubscription();
+        setIsSubscribed(hasSubscription || isAdmin);
+      }
+      setCheckingSubscription(false);
+    };
     
-    const matchesExperience = experienceFilter === "All Experience" || 
-      (experienceFilter === "0-2 years" && parseInt(video.experience) <= 2) ||
-      (experienceFilter === "3-5 years" && parseInt(video.experience) >= 3 && parseInt(video.experience) <= 5) ||
-      (experienceFilter === "6-10 years" && parseInt(video.experience) >= 6 && parseInt(video.experience) <= 10) ||
-      (experienceFilter === "10+ years" && parseInt(video.experience) > 10);
-    
-    const matchesJob = jobFilter === "All Jobs" || video.role === jobFilter;
+    if (!authLoading) {
+      checkSubscription();
+    }
+  }, [user, isAdmin, authLoading, hasActiveSubscription]);
 
-    return matchesSearch && matchesExperience && matchesJob;
+  // Fetch all videos if admin or subscribed
+  useEffect(() => {
+    if (isSubscribed && (isAdmin || user)) {
+      fetchAllVideos();
+    }
+  }, [isSubscribed, isAdmin, user]);
+
+  const filteredVideos = videos.filter((video) => {
+    const matchesSearch = 
+      (video.target_role?.toLowerCase().includes(searchQuery.toLowerCase()) || false);
+    
+    const matchesJob = jobFilter === "All Jobs" || video.target_role === jobFilter;
+
+    return matchesSearch && matchesJob;
   });
+
+  if (authLoading || checkingSubscription) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Auth required
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <main className="pt-24 pb-16 flex items-center justify-center min-h-screen">
+          <div className="text-center max-w-md mx-auto px-4">
+            <LogIn className="w-16 h-16 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Sign In Required</h2>
+            <p className="text-muted-foreground mb-6">Please sign in to access the company portal</p>
+            <Button variant="hero" onClick={() => navigate("/auth")}>
+              Sign In
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   // Subscription paywall
   if (!isSubscribed) {
@@ -215,7 +190,7 @@ const CompanyPortal = () => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, role, or skills..."
+                placeholder="Search by role..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 bg-secondary border-border"
@@ -265,109 +240,118 @@ const CompanyPortal = () => {
               <span className="text-primary font-semibold">{filteredVideos.filter(v => v.status === "completed").length}</span> completed
             </div>
             <div className="text-sm text-muted-foreground">
-              <span className="text-yellow-500 font-semibold">{filteredVideos.filter(v => v.status === "processing").length}</span> processing
+              <span className="text-yellow-500 font-semibold">{filteredVideos.filter(v => v.status === "processing" || v.status === "pending").length}</span> processing
             </div>
           </motion.div>
 
+          {/* Loading state */}
+          {videosLoading && (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+          )}
+
           {/* Video Grid */}
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredVideos.map((video, index) => (
-              <motion.div
-                key={video.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * index }}
-                className="bg-gradient-card rounded-xl border border-border/50 overflow-hidden hover:border-primary/30 transition-all group shadow-card hover:shadow-elegant"
-              >
-                {/* Video Thumbnail */}
-                <div className="aspect-video bg-secondary/50 relative">
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center group-hover:bg-primary/30 transition-colors">
-                      <Play className="w-6 h-6 text-primary" />
+          {!videosLoading && (
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredVideos.map((video, index) => (
+                <motion.div
+                  key={video.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 * index }}
+                  className="bg-gradient-card rounded-xl border border-border/50 overflow-hidden hover:border-primary/30 transition-all group shadow-card hover:shadow-elegant"
+                >
+                  {/* Video Thumbnail */}
+                  <div className="aspect-video bg-secondary/50 relative">
+                    {video.thumbnail_url ? (
+                      <img src={video.thumbnail_url} alt="Video thumbnail" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-14 h-14 rounded-full bg-primary/20 flex items-center justify-center group-hover:bg-primary/30 transition-colors">
+                          <Play className="w-6 h-6 text-primary" />
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Status Badge */}
+                    <Badge 
+                      className={`absolute top-3 right-3 ${
+                        video.status === "completed" 
+                          ? "bg-primary/20 text-primary border-primary/30" 
+                          : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                      }`}
+                    >
+                      {video.status}
+                    </Badge>
+
+                    {/* Role Overlay */}
+                    <div className="absolute bottom-3 left-3 bg-secondary/80 backdrop-blur-sm rounded-lg px-3 py-1.5">
+                      <p className="text-sm font-semibold text-foreground">{video.target_role || "Unknown Role"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(video.created_at).toLocaleDateString()}
+                      </p>
                     </div>
                   </div>
-                  
-                  {/* Status Badge */}
-                  <Badge 
-                    className={`absolute top-3 right-3 ${
-                      video.status === "completed" 
-                        ? "bg-primary/20 text-primary border-primary/30" 
-                        : "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
-                    }`}
-                  >
-                    {video.status}
-                  </Badge>
 
-                  {/* Name Overlay */}
-                  <div className="absolute bottom-3 left-3 bg-secondary/80 backdrop-blur-sm rounded-lg px-3 py-1.5">
-                    <p className="text-sm font-semibold text-foreground">{video.name}</p>
-                    <p className="text-xs text-muted-foreground">{video.role}</p>
-                  </div>
-                </div>
+                  {/* Video Info */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+                      {video.target_countries && video.target_countries.length > 0 && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5" />
+                          {video.target_countries[0]}
+                        </span>
+                      )}
+                    </div>
 
-                {/* Video Info */}
-                <div className="p-4">
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                    <span className="flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      {video.experience}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {video.location}
-                    </span>
-                  </div>
-
-                  {/* Skills */}
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {video.skills.map((skill) => (
-                      <Badge 
-                        key={skill} 
-                        variant="secondary"
-                        className="text-xs bg-secondary/50 text-muted-foreground border-border/50"
+                    {/* Actions */}
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => {
+                          if (video.video_url) {
+                            window.open(video.video_url, '_blank');
+                          }
+                        }}
+                        disabled={video.status !== "completed" || !video.video_url}
                       >
-                        {skill}
-                      </Badge>
-                    ))}
+                        <Play className="w-3.5 h-3.5 mr-1" />
+                        Play
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedVideo(video);
+                          setShowQR(true);
+                        }}
+                        disabled={video.status !== "completed" || !video.video_url}
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          if (video.video_url) {
+                            window.open(video.video_url, '_blank');
+                          }
+                        }}
+                        disabled={video.status !== "completed" || !video.video_url}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
 
-                  {/* Actions */}
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="flex-1"
-                      onClick={() => setSelectedVideo(video)}
-                      disabled={video.status !== "completed"}
-                    >
-                      <Play className="w-3.5 h-3.5 mr-1" />
-                      Play
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedVideo(video);
-                        setShowQR(true);
-                      }}
-                      disabled={video.status !== "completed"}
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      disabled={video.status !== "completed"}
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {filteredVideos.length === 0 && (
+          {!videosLoading && filteredVideos.length === 0 && (
             <div className="text-center py-16">
               <p className="text-muted-foreground">No videos found matching your criteria.</p>
             </div>
@@ -381,16 +365,16 @@ const CompanyPortal = () => {
           <DialogHeader>
             <DialogTitle>Share Video CV</DialogTitle>
           </DialogHeader>
-          {selectedVideo && (
+          {selectedVideo && selectedVideo.video_url && (
             <div className="flex flex-col items-center py-6">
               <div className="bg-white p-4 rounded-xl mb-4">
                 <QRCodeSVG 
-                  value={selectedVideo.videoUrl || "https://aividcv.com"} 
+                  value={selectedVideo.video_url} 
                   size={200}
                 />
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                Scan this QR code to view {selectedVideo.name}'s video CV
+                Scan this QR code to view this video CV
               </p>
             </div>
           )}
