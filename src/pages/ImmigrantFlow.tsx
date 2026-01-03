@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,11 +24,14 @@ import {
   Play,
   Download,
   QrCode as QrCodeIcon,
-  RefreshCw
+  RefreshCw,
+  LogIn
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { useVideoGeneration } from "@/hooks/useVideoGeneration";
+import { useAuth } from "@/hooks/useAuth";
+import { useVideos, usePayments } from "@/hooks/useVideos";
 import { extractTextFromFile, extractLinkedInProfile } from "@/lib/extractCvText";
 
 const countries = [
@@ -53,6 +57,11 @@ const steps = [
 ];
 
 const ImmigrantFlow = () => {
+  const navigate = useNavigate();
+  const { user, isLoading: authLoading } = useAuth();
+  const { createVideo, updateVideo } = useVideos();
+  const { createPayment } = usePayments();
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
     originCountry: "",
@@ -69,6 +78,7 @@ const ImmigrantFlow = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingComplete, setRecordingComplete] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
   
   const { 
     generateVideo, 
@@ -82,13 +92,20 @@ const ImmigrantFlow = () => {
 
   const progress = (currentStep / steps.length) * 100;
 
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!authLoading && !user) {
+      toast.error("Please sign in to create your video CV");
+      navigate("/auth");
+    }
+  }, [user, authLoading, navigate]);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setFormData({ ...formData, cvFile: file });
       toast.success("CV uploaded successfully!");
       
-      // Extract text from the CV
       try {
         const extractedText = await extractTextFromFile(file);
         setFormData(prev => ({ ...prev, extractedCvText: extractedText }));
@@ -106,7 +123,6 @@ const ImmigrantFlow = () => {
       setIsRecording(true);
       toast.info("Recording started. Read the sentence aloud.");
       
-      // Simulate recording for 5 seconds
       setTimeout(() => {
         setIsRecording(false);
         setRecordingComplete(true);
@@ -118,9 +134,29 @@ const ImmigrantFlow = () => {
   };
 
   const handlePayment = async () => {
+    if (!user) {
+      toast.error("Please sign in to continue");
+      navigate("/auth");
+      return;
+    }
+
     setIsProcessing(true);
     
     try {
+      // Create video record in database
+      const video = await createVideo({
+        target_role: formData.targetRole,
+        target_countries: [formData.currentCountry],
+      });
+      setCurrentVideoId(video.id);
+
+      // Create pending payment record
+      await createPayment({
+        payment_type: "video",
+        amount: 1.99,
+        video_id: video.id,
+      });
+
       // Extract LinkedIn profile if that's the upload method
       let cvText = formData.extractedCvText;
       let linkedinText = "";
@@ -141,13 +177,31 @@ const ImmigrantFlow = () => {
         currentCountry: formData.currentCountry,
       });
 
+      // Update video record with HeyGen ID
+      await updateVideo(video.id, {
+        heygen_video_id: videoId,
+        status: "processing",
+      });
+
       toast.info("Video is being generated. This may take 2-5 minutes...");
       
-      // Move to result page and start polling
       setCurrentStep(6);
       
       // Poll for video completion
-      await pollStatus(videoId);
+      const result = await pollStatus(videoId);
+      
+      // Update video with final URL
+      if (result.status === "completed" && result.videoUrl) {
+        await updateVideo(video.id, {
+          video_url: result.videoUrl,
+          thumbnail_url: result.thumbnailUrl,
+          status: "completed",
+        });
+      } else if (result.status === "failed") {
+        await updateVideo(video.id, {
+          status: "failed",
+        });
+      }
       
     } catch (error) {
       console.error("Payment/generation error:", error);
@@ -173,6 +227,33 @@ const ImmigrantFlow = () => {
         return true;
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <main className="pt-24 pb-16 flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <LogIn className="w-16 h-16 text-primary mx-auto mb-4" />
+            <h2 className="text-2xl font-bold mb-2">Sign In Required</h2>
+            <p className="text-muted-foreground mb-6">Please sign in to create your video CV</p>
+            <Button variant="hero" onClick={() => navigate("/auth")}>
+              Sign In
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const renderStep = () => {
     switch (currentStep) {

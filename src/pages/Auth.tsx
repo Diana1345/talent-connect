@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
@@ -8,9 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, Eye, EyeOff, Video, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
 
 const Auth = () => {
   const navigate = useNavigate();
+  const { user, signIn, signUp, isLoading: authLoading } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -27,6 +29,13 @@ const Auth = () => {
     confirmPassword: "",
   });
 
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate("/immigrant");
+    }
+  }, [user, authLoading, navigate]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginData.email || !loginData.password) {
@@ -35,12 +44,19 @@ const Auth = () => {
     }
     
     setIsLoading(true);
-    // Simulate login
-    setTimeout(() => {
-      setIsLoading(false);
+    const { error } = await signIn(loginData.email, loginData.password);
+    setIsLoading(false);
+    
+    if (error) {
+      if (error.message.includes("Invalid login credentials")) {
+        toast.error("Invalid email or password");
+      } else {
+        toast.error(error.message);
+      }
+    } else {
       toast.success("Welcome back!");
       navigate("/immigrant");
-    }, 1500);
+    }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -62,13 +78,29 @@ const Auth = () => {
     }
 
     setIsLoading(true);
-    // Simulate signup
-    setTimeout(() => {
-      setIsLoading(false);
+    const fullName = `${signupData.firstName} ${signupData.lastName}`;
+    const { error } = await signUp(signupData.email, signupData.password, fullName);
+    setIsLoading(false);
+    
+    if (error) {
+      if (error.message.includes("already registered")) {
+        toast.error("This email is already registered. Please sign in instead.");
+      } else {
+        toast.error(error.message);
+      }
+    } else {
       toast.success("Account created successfully!");
       navigate("/immigrant");
-    }, 1500);
+    }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
