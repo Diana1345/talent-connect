@@ -473,7 +473,7 @@ const ImmigrantFlow = () => {
             <div className="bg-gradient-card rounded-xl border border-border p-6 space-y-4">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">AI Video CV Generation</span>
-                <span className="font-semibold text-foreground">$19.00</span>
+                <span className="font-semibold text-foreground">$1.99</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">HD Download</span>
@@ -485,7 +485,7 @@ const ImmigrantFlow = () => {
               </div>
               <div className="border-t border-border pt-4 flex justify-between items-center">
                 <span className="font-semibold text-foreground">Total</span>
-                <span className="text-2xl font-bold text-primary">$19.00</span>
+                <span className="text-2xl font-bold text-primary">$1.99</span>
               </div>
             </div>
 
@@ -493,24 +493,37 @@ const ImmigrantFlow = () => {
               variant="hero" 
               size="xl" 
               className="w-full"
+              onClick={() => {
+                window.open("https://www.paypal.com/ncp/payment/3QY2H8GX9ZM6E", "_blank");
+                toast.info("After completing payment, click 'I've Paid' to generate your video.");
+              }}
+            >
+              <CreditCard className="w-5 h-5 mr-2" />
+              Pay $1.99 with PayPal
+            </Button>
+
+            <Button 
+              variant="outline" 
+              size="lg" 
+              className="w-full"
               onClick={handlePayment}
               disabled={isProcessing}
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Processing...
+                  Generating Video...
                 </>
               ) : (
                 <>
-                  <CreditCard className="w-5 h-5 mr-2" />
-                  Pay with PayPal
+                  <CheckCircle2 className="w-5 h-5 mr-2" />
+                  I've Paid - Generate My Video
                 </>
               )}
             </Button>
 
             <p className="text-xs text-center text-muted-foreground">
-              Secure payment powered by PayPal. You'll be redirected to complete payment.
+              Complete payment via PayPal, then click "I've Paid" to start video generation.
             </p>
           </motion.div>
         );
