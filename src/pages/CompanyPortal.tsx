@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Filter, Play, Download, QrCode, Briefcase, Clock, MapPin } from "lucide-react";
+import { Search, Filter, Play, Download, QrCode, Briefcase, Clock, MapPin, CreditCard, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { QRCodeSVG } from "qrcode.react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 // Mock data for videos
 const mockVideos = [
@@ -94,6 +95,7 @@ const CompanyPortal = () => {
   const [jobFilter, setJobFilter] = useState("All Jobs");
   const [selectedVideo, setSelectedVideo] = useState<typeof mockVideos[0] | null>(null);
   const [showQR, setShowQR] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
   const filteredVideos = mockVideos.filter((video) => {
     const matchesSearch = video.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -110,6 +112,78 @@ const CompanyPortal = () => {
 
     return matchesSearch && matchesExperience && matchesJob;
   });
+
+  // Subscription paywall
+  if (!isSubscribed) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <main className="pt-24 pb-16">
+          <div className="container mx-auto px-4 max-w-lg">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center"
+            >
+              <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-6">
+                <Lock className="w-10 h-10 text-primary" />
+              </div>
+              <h1 className="text-3xl font-bold mb-4">
+                Subscribe to Access <span className="text-gradient">Video CVs</span>
+              </h1>
+              <p className="text-muted-foreground mb-8">
+                Get unlimited access to all candidate video CVs with a monthly subscription.
+              </p>
+
+              <div className="bg-gradient-card rounded-xl border border-border p-6 mb-6">
+                <div className="text-4xl font-bold text-primary mb-2">$49<span className="text-lg text-muted-foreground">/month</span></div>
+                <ul className="text-left space-y-3 mt-6 mb-6">
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-primary">✓</span> Unlimited video CV access
+                  </li>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-primary">✓</span> Download & share videos
+                  </li>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-primary">✓</span> QR code generation
+                  </li>
+                  <li className="flex items-center gap-2 text-muted-foreground">
+                    <span className="text-primary">✓</span> Filter by role & experience
+                  </li>
+                </ul>
+              </div>
+
+              <Button 
+                variant="hero" 
+                size="xl" 
+                className="w-full mb-4"
+                onClick={() => {
+                  window.open("https://www.paypal.com/ncp/payment/44X7DGQ5WSU2W", "_blank");
+                  toast.info("After completing payment, click 'I've Subscribed' to access the portal.");
+                }}
+              >
+                <CreditCard className="w-5 h-5 mr-2" />
+                Subscribe with PayPal
+              </Button>
+
+              <Button 
+                variant="outline" 
+                size="lg" 
+                className="w-full"
+                onClick={() => setIsSubscribed(true)}
+              >
+                I've Subscribed - Access Portal
+              </Button>
+
+              <p className="text-xs text-muted-foreground mt-4">
+                Secure payment powered by PayPal. Cancel anytime.
+              </p>
+            </motion.div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
