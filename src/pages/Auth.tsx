@@ -32,7 +32,7 @@ const Auth = () => {
   // Redirect if already logged in
   useEffect(() => {
     if (user && !authLoading) {
-      navigate("/immigrant");
+      navigate("/");
     }
   }, [user, authLoading, navigate]);
 
@@ -55,7 +55,7 @@ const Auth = () => {
       }
     } else {
       toast.success("Welcome back!");
-      navigate("/immigrant");
+      navigate("/");
     }
   };
 
@@ -90,7 +90,7 @@ const Auth = () => {
       }
     } else {
       toast.success("Account created successfully!");
-      navigate("/immigrant");
+      navigate("/");
     }
   };
 
